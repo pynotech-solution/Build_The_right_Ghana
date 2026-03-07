@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { loadCaptchaEnginge, LoadCanvasTemplate, validateCaptcha } from 'react-simple-captcha';
-import { RotateCw, MapPin, MessageSquare } from 'lucide-react';
+import { RotateCw, MapPin, MessageSquare, X, Check } from 'lucide-react';
 import emailjs from '@emailjs/browser';
 
 const Contact = () => {
@@ -13,6 +13,11 @@ const Contact = () => {
     message: '',
     privacyAccepted: false
   });
+  const [popup, setPopup] = useState({
+    show: false,
+    message: '',
+    type: 'success' // 'success' or 'error'
+  });
 
   useEffect(() => {
     // Initialize captcha: 6 chars, light gray bg, dark green text
@@ -24,6 +29,8 @@ const Contact = () => {
     document.getElementById('user_captcha_input').value = "";
   };
 
+  const closePopup = () => setPopup({ ...popup, show: false });
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const user_captcha_value = document.getElementById('user_captcha_input').value;
@@ -33,7 +40,7 @@ const Contact = () => {
       emailjs.sendForm('YOUR_SERVICE_ID', 'YOUR_TEMPLATE_ID', form.current, 'YOUR_PUBLIC_KEY')
         .then((result) => {
           console.log("Email sent:", result.text);
-          alert('Message sent successfully!');
+          setPopup({ show: true, message: 'Message sent successfully!', type: 'success' });
           setFormData({
             company: '',
             name: '',
@@ -46,16 +53,16 @@ const Contact = () => {
           document.getElementById('user_captcha_input').value = "";
         }, (error) => {
           console.log("Email error:", error.text);
-          alert('Failed to send message. Please try again.');
+          setPopup({ show: true, message: 'Failed to send message. Please try again.', type: 'error' });
         });
     } else {
-      alert('Captcha is incorrect. Please try again.');
+      setPopup({ show: true, message: 'Captcha is incorrect. Please try again.', type: 'error' });
       document.getElementById('user_captcha_input').value = "";
     }
   };
 
   return (
-    <section className="w-full bg-[#8eb39b]">
+    <section  className="w-full bg-[#8eb39b]">
       {/* 1. Map Section */}
       <div className="relative h-[350px] md:h-[500px] w-full">
         <iframe
@@ -68,10 +75,10 @@ const Contact = () => {
       </div>
 
       {/* 2. Content Container */}
-      <div className="relative px-6 md:px-20 pb-16 md:pb-32 flex flex-col md:grid md:grid-cols-2 gap-12 text-center text-[#2d4e41]">
+      <div className="relative px-6 md:px-20 pb-16 md:pb-32 flex flex-col lg:grid lg:grid-cols-3 gap-12 text-center text-[#2d4e41]">
         
         {/* ORDER 1: ADDRESS (Top on mobile) */}
-        <div className="order-1 md:order-none flex flex-col items-center pt-12 md:pt-24">
+        <div className="order-1 lg:col-start-1 lg:row-start-1 flex flex-col items-center pt-12 md:pt-24">
           <div className="bg-[#2d4e41] p-4 rounded-full text-white mb-4">
             <MapPin size={32} />
           </div>
@@ -84,7 +91,7 @@ const Contact = () => {
         </div>
 
         {/* ORDER 2: THE FULL FORM (Second on mobile, Overlapping on desktop) */}
-        <div className="order-2 md:absolute md:-top-48 md:left-1/2 md:-translate-x-1/2 z-20 w-full max-w-md mx-auto px-4 md:px-0">
+        <div className="order-2 lg:col-start-2 lg:row-start-1 lg:-mt-48 z-20 w-full max-w-md mx-auto px-4 md:px-0">
           <div className="bg-white p-8 md:p-12 shadow-2xl rounded-sm border-t-4 border-[#448c6c]">
             <h2 className="text-3xl md:text-5xl font-bold text-[#2d4e41] text-center mb-10">Get in touch</h2>
             
@@ -187,7 +194,7 @@ const Contact = () => {
         </div>
 
         {/* ORDER 3: CONTACT (Bottom on mobile) */}
-        <div className="order-3 md:order-none flex flex-col items-center md:pt-24">
+        <div className="order-3 lg:col-start-3 lg:row-start-1 flex flex-col items-center md:pt-24">
           <div className="bg-[#2d4e41] p-4 rounded-full text-white mb-4">
             <MessageSquare size={32} />
           </div>
@@ -206,6 +213,28 @@ const Contact = () => {
         .captcha-wrapper a { display: none !important; }
         canvas { display: block !important; margin: 0 !important; }
       `}</style>
+
+      {/* Status Popup Modal */}
+      {popup.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={closePopup}></div>
+          <div className="relative bg-white rounded-xl shadow-2xl p-8 max-w-sm w-full text-center transform transition-all scale-100">
+            <div className={`mx-auto w-16 h-16 flex items-center justify-center rounded-full mb-4 ${popup.type === 'success' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+              {popup.type === 'success' ? <Check size={32} /> : <X size={32} />}
+            </div>
+            <h3 className="text-2xl font-bold text-gray-800 mb-2">
+              {popup.type === 'success' ? 'Success!' : 'Error'}
+            </h3>
+            <p className="text-gray-600 mb-6">{popup.message}</p>
+            <button 
+              onClick={closePopup}
+              className={`px-8 py-3 rounded-full font-bold text-white transition-colors ${popup.type === 'success' ? 'bg-[#448c6c] hover:bg-[#366d54]' : 'bg-red-500 hover:bg-red-600'}`}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

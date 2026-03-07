@@ -1,6 +1,8 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const AboutUsCurvedCentered = () => {
+  const navigate = useNavigate();
   return (
     <section className="py-20 px-6 md:px-20 bg-white min-h-[600px] flex items-center">
       <div className="max-w-6xl mx-auto w-full">
@@ -51,7 +53,7 @@ const AboutUsCurvedCentered = () => {
           </div>
 
           {/* Read More Button - Floats right as per screenshot */}
-          <div className="clear-both mt-12 flex justify-end">
+          <div onClick={() => navigate('/about')} className="clear-both mt-12 flex justify-end">
             <button className="bg-[#5c947a] hover:bg-[#4a7a63] text-white font-bold py-3 px-10 rounded-full transition-all uppercase shadow-md">
               Read More
             </button>

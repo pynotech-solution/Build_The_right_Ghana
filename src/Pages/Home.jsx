@@ -6,17 +6,23 @@ import Mission from '../Components/Mission'
 import Blog from '../Components/Blog'
 import FooterCTA from '../Components/FooterCTA'
 import Contact from '../Components/Contact'
+import Socials from '../Components/Socials'
 
 const Home = () => {
   return (
     <div>
-             <Hero />
+      <Hero />
+      <Socials />
       <AboutUsCurvedCentered />
-      <Projects />
+      <div id="projects">
+        <Projects />
+      </div>
       <Mission />
       <Blog />
       <FooterCTA />
-      <Contact />
+      <div className="" id="contact">
+        <Contact />
+      </div>
     </div>
   )
 }

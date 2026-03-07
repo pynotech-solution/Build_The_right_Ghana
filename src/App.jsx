@@ -5,6 +5,7 @@ import BlogArchive from './Pages/Blog/BlogArchive';
 import PostPage from './Pages/Blog/PostPage';
 import Header from './Components/Header';
 import Footer from './Components/Footer';
+import FullAboutPage from './Pages/FullAboutPage';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
 
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/about" element={<FullAboutPage />} />
         <Route path="/blog" element={<BlogArchive />} />
         <Route path="/blog/:slug" element={<PostPage />} />
       </Routes>

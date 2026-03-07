@@ -1,6 +1,7 @@
 import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { blogPosts } from '../../Components/blogPosts';
+import Socials from '../../Components/Socials';
 
 const PostPage = () => {
   const { slug } = useParams();
@@ -35,6 +36,8 @@ const PostPage = () => {
           {/* Add more paragraphs/sections here */}
         </div>
       </div>
+
+      <Socials />
     </article>
   );
 };

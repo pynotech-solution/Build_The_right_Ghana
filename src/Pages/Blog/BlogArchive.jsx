@@ -1,6 +1,7 @@
 import React from 'react';
 import { BlogCard } from '../../Components/Blog';
 import { blogPosts } from '../../Components/blogPosts';
+import Socials from '../../Components/Socials';
 
 const BlogArchive = () => {
   // Use the shared data source
@@ -18,6 +19,7 @@ const BlogArchive = () => {
           ))}
         </div>
       </div>
+      <Socials />
     </main>
   );
 };

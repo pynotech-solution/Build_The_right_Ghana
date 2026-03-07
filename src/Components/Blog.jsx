@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { blogPosts } from './blogPosts';
+import Socials from './Socials';
 
   export const BlogCard = ({ date, category, title, excerpt, imageUrl, slug }) => {
   return (
@@ -77,6 +78,8 @@ const Blog = () => {
           ))}
         </div>
       </div>
+
+      <Socials />
     </section>
   );
 };
