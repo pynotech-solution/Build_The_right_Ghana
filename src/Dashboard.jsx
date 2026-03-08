@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, deleteDoc, updateDoc, doc, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth } from './firebase';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, LogOut, LayoutDashboard, Eye, Pencil, X, AlertTriangle, Check, Info } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Plus, Trash2, LogOut, LayoutDashboard, Eye, Pencil, X, AlertTriangle, Check, Info, Home } from 'lucide-react';
 
 const PREDEFINED_CATEGORIES = [
   "Education",
@@ -234,9 +234,14 @@ const Dashboard = () => {
         <div className="flex items-center gap-2 font-bold text-xl">
           <LayoutDashboard /> Admin Dashboard
         </div>
-        <button onClick={handleLogout} className="flex items-center gap-2 hover:text-gray-300 transition-colors">
-          <LogOut size={20} /> Logout
-        </button>
+        <div className="flex items-center gap-4">
+          <Link to="/" className="flex items-center gap-2 hover:text-gray-300 transition-colors font-medium">
+            <Home size={20} /> <span className="hidden sm:inline">Back to Website</span>
+          </Link>
+          <button onClick={handleLogout} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors shadow-sm">
+            <LogOut size={18} /> <span className="hidden sm:inline">Logout</span>
+          </button>
+        </div>
       </nav>
 
       <div className="max-w-7xl mx-auto p-8">
@@ -269,13 +274,6 @@ const Dashboard = () => {
                 </div>
                 <div>
                   <FormLabel label="Category" info="The topic this post belongs to (e.g., Education, Health)." />
-                  <input
-                    type="text"
-                    required
-                    value={formData.category}
-                    onChange={(e) => setFormData({...formData, category: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-[#448c6c] outline-none"
-                  />
                   <select
                     value={isCustomCategory ? 'Other' : formData.category}
                     onChange={(e) => {
