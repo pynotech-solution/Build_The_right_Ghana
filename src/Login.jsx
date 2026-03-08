@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from './firebase';
-import { useNavigate } from 'react-router-dom';
-import { Lock } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Lock, ArrowLeft } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -23,6 +23,9 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8">
+        <Link to="/" className="flex items-center gap-2 text-gray-500 hover:text-[#2d4e41] mb-6 transition-colors text-sm font-medium">
+          <ArrowLeft size={16} /> Back to Website
+        </Link>
         <div className="flex justify-center mb-6 text-[#2d4e41]">
           <Lock size={48} />
         </div>

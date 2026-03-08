@@ -12,7 +12,7 @@ const ProtectedRoute = ({ children }) => {
       if (currentUser) {
         const lastActivity = localStorage.getItem('lastActivity');
         const now = Date.now();
-        const maxInactivity = 30 * 60 * 60 * 1000; // 30 hours
+        const maxInactivity = 30 * 60 * 1000; // 30 minutes
 
         if (lastActivity && (now - parseInt(lastActivity) > maxInactivity)) {
           await signOut(auth);
@@ -37,7 +37,8 @@ const ProtectedRoute = ({ children }) => {
     const updateActivity = () => localStorage.setItem('lastActivity', Date.now().toString());
     const checkInactivity = async () => {
       const lastActivity = localStorage.getItem('lastActivity');
-      if (lastActivity && (Date.now() - parseInt(lastActivity) >  10 * 1000)) {
+      const maxInactivity = 30 * 60 * 1000; // 30 minutes
+      if (lastActivity && (Date.now() - parseInt(lastActivity) > maxInactivity)) {
         await signOut(auth);
         setUser(null);
       }
