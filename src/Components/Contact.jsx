@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { loadCaptchaEnginge, LoadCanvasTemplate, validateCaptcha } from 'react-simple-captcha';
 import { RotateCw, MapPin, MessageSquare, X, Check } from 'lucide-react';
 import emailjs from '@emailjs/browser';
 import Reveal from './Reveal';
 
 const Contact = () => {
   const form = useRef();
+  const canvasRef = useRef(null);
+  const [captchaText, setCaptchaText] = useState('');
   const [formData, setFormData] = useState({
     company: '',
     name: '',
@@ -20,13 +21,45 @@ const Contact = () => {
     type: 'success' // 'success' or 'error'
   });
 
+  const generateCaptcha = () => {
+    const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    let captcha = '';
+    for (let i = 0; i < 6; i++) {
+      captcha += chars[Math.floor(Math.random() * chars.length)];
+    }
+    setCaptchaText(captcha);
+    
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#f3f4f6';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      ctx.font = 'bold 24px Arial';
+      ctx.fillStyle = '#2d4e41';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(captcha, canvas.width / 2, canvas.height / 2);
+      
+      // Add noise lines
+      for(let i=0; i<5; i++) {
+          ctx.beginPath();
+          ctx.moveTo(Math.random() * canvas.width, Math.random() * canvas.height);
+          ctx.lineTo(Math.random() * canvas.width, Math.random() * canvas.height);
+          ctx.strokeStyle = '#2d4e41';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+      }
+    }
+  };
+
   useEffect(() => {
-    // Initialize captcha: 6 chars, light gray bg, dark green text
-    loadCaptchaEnginge(6, '#f3f4f6', '#2d4e41');
+    generateCaptcha();
   }, []);
 
   const handleReload = () => {
-    loadCaptchaEnginge(6, '#f3f4f6', '#2d4e41');
+    generateCaptcha();
     document.getElementById('user_captcha_input').value = "";
   };
 
@@ -36,7 +69,7 @@ const Contact = () => {
     e.preventDefault();
     const user_captcha_value = document.getElementById('user_captcha_input').value;
 
-    if (validateCaptcha(user_captcha_value)) {
+    if (user_captcha_value === captchaText) {
       // Replace with your actual Service ID, Template ID, and Public Key
       emailjs.sendForm(
         import.meta.env.VITE_EMAILJS_SERVICE_ID,
@@ -170,8 +203,8 @@ const Contact = () => {
               {/* LIVE CAPTCHA AREA */}
               <div className="py-4 bg-gray-50 px-4 rounded-md border border-gray-100 relative">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="captcha-wrapper bg-white border border-gray-300 rounded overflow-hidden">
-                    <LoadCanvasTemplate />
+                  <div className="captcha-wrapper bg-white border border-gray-300 rounded overflow-hidden flex justify-center items-center">
+                    <canvas ref={canvasRef} width={200} height={50} />
                   </div>
                   <button 
                     type="button" 
@@ -212,14 +245,6 @@ const Contact = () => {
         </div>
 
       </div>
-
-      
-
-      {/* Global Style Override for the Captcha Library */}
-      <style>{`
-        .captcha-wrapper a { display: none !important; }
-        canvas { display: block !important; margin: 0 !important; }
-      `}</style>
 
       {/* Status Popup Modal */}
       {popup.show && (

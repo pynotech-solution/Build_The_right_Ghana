@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { blogPosts } from './blogPosts';
 import Socials from './Socials';
 import Reveal from './Reveal';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { db } from '../firebase';
 
   export const BlogCard = ({ date, category, title, excerpt, imageUrl, slug }) => {
   return (
@@ -48,9 +49,25 @@ import Reveal from './Reveal';
 
 const Blog = () => {
   const navigate = useNavigate();
+  const [posts, setPosts] = useState([]);
 
-  // Display only the first 3 posts on the home page
-  const posts = blogPosts.slice(0, 3);
+  useEffect(() => {
+    const fetchPosts = async () => {
+      try {
+        const q = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(3));
+        const querySnapshot = await getDocs(q);
+        const fetchedPosts = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setPosts(fetchedPosts);
+      } catch (error) {
+        console.error("Error fetching posts:", error);
+      }
+    };
+
+    fetchPosts();
+  }, []);
 
   return (
     <Reveal>

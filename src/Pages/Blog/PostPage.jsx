@@ -1,14 +1,37 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { blogPosts } from '../../Components/blogPosts';
 import Socials from '../../Components/Socials';
 import Reveal from '../../Components/Reveal';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../firebase';
 
 const PostPage = () => {
   const { slug } = useParams();
+  const [post, setPost] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // Find the post matching the slug from the shared data
-  const post = blogPosts.find(p => p.slug === slug);
+  useEffect(() => {
+    const fetchPost = async () => {
+      try {
+        const q = query(collection(db, "posts"), where("slug", "==", slug));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          setPost(querySnapshot.docs[0].data());
+        } else {
+          setPost(null);
+        }
+      } catch (error) {
+        console.error("Error fetching post:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPost();
+  }, [slug]);
+
+  if (loading) return <div className="pt-40 pb-20 text-center text-2xl text-gray-600">Loading...</div>;
 
   if (!post) {
     return <div className="pt-40 pb-20 text-center text-2xl text-gray-600">Post not found</div>;

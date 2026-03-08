@@ -6,6 +6,9 @@ import PostPage from './Pages/Blog/PostPage';
 import Header from './Components/Header';
 import Footer from './Components/Footer';
 import FullAboutPage from './Pages/FullAboutPage';
+import Login from './Login';
+import Dashboard from './Dashboard';
+import ProtectedRoute from './ProtectedRoute';
 
 function App() {
   return (
@@ -17,6 +20,15 @@ function App() {
         <Route path="/about" element={<FullAboutPage />} />
         <Route path="/blog" element={<BlogArchive />} />
         <Route path="/blog/:slug" element={<PostPage />} />
+        <Route path="/admin/login" element={<Login />} />
+        <Route 
+          path="/admin/dashboard" 
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          } 
+        />
       </Routes>
       <Footer />
     </>
