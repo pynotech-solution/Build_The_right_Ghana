@@ -5,6 +5,18 @@ import { db, auth } from './firebase';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, LogOut, LayoutDashboard, Eye, Pencil, X, AlertTriangle, Check, Info } from 'lucide-react';
 
+const PREDEFINED_CATEGORIES = [
+  "Education",
+  "Health",
+  "Sanitation",
+  "Human Rights",
+  "Environment",
+  "Technology",
+  "Poverty Alleviation",
+  "Entrepreneurship",
+  "Tolerance"
+];
+
 const FormLabel = ({ label, info }) => (
   <div className="flex items-center gap-2 mb-1">
     <label className="block text-sm font-medium text-gray-700">{label}</label>
@@ -43,6 +55,7 @@ const Dashboard = () => {
     message: ''
   });
   const previewDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
   const navigate = useNavigate();
 
   const fetchPosts = async () => {
@@ -167,6 +180,7 @@ const Dashboard = () => {
       }
       
       setFormData({ title: '', category: '', excerpt: '', imageUrl: '', content: '' });
+      setIsCustomCategory(false);
       fetchPosts();
     } catch (error) {
       console.error("Error saving document: ", error);
@@ -196,6 +210,7 @@ const Dashboard = () => {
       content: post.content,
     });
     setEditId(post.id);
+    setIsCustomCategory(!PREDEFINED_CATEGORIES.includes(post.category));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -205,6 +220,7 @@ const Dashboard = () => {
       'Are you sure you want to cancel editing? Unsaved changes will be lost.',
       () => {
         setFormData({ title: '', category: '', excerpt: '', imageUrl: '', content: '' });
+        setIsCustomCategory(false);
         setEditId(null);
       },
       true
@@ -260,6 +276,36 @@ const Dashboard = () => {
                     onChange={(e) => setFormData({...formData, category: e.target.value})}
                     className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-[#448c6c] outline-none"
                   />
+                  <select
+                    value={isCustomCategory ? 'Other' : formData.category}
+                    onChange={(e) => {
+                      if (e.target.value === 'Other') {
+                        setIsCustomCategory(true);
+                        setFormData({ ...formData, category: '' });
+                      } else {
+                        setIsCustomCategory(false);
+                        setFormData({ ...formData, category: e.target.value });
+                      }
+                    }}
+                    className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-[#448c6c] outline-none mb-2 bg-white"
+                  >
+                    <option value="" disabled>Select a category</option>
+                    {PREDEFINED_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                    <option value="Other">Other (Type your own)</option>
+                  </select>
+                  
+                  {isCustomCategory && (
+                    <input
+                      type="text"
+                      required
+                      placeholder="Enter custom category"
+                      value={formData.category}
+                      onChange={(e) => setFormData({...formData, category: e.target.value})}
+                      className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-[#448c6c] outline-none"
+                    />
+                  )}
                 </div>
                 <div>
                   <FormLabel label="Image" info="Upload an image, paste an image URL, or paste an image from your clipboard." />
