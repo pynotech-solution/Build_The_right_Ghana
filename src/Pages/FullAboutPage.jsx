@@ -9,8 +9,7 @@ const FullAboutPage = () => {
 
   return (
     <main className="pt-24 bg-white min-h-screen">
-      {/* 1. Simple Hero Header */}
-      {/* 1. Hero Header with Background Image */}
+
 <section className="relative h-[40vh] min-h-[300px] flex items-center justify-center overflow-hidden">
   {/* Background Image & Overlay */}
   <div 
@@ -19,7 +18,7 @@ const FullAboutPage = () => {
       backgroundImage: "url('https://www.buildtherightghana.org/images/803/19268596/IMG-20240421-WA0012-f59c1EJLAv_GSvI_LtUCmg.jpg')", // A forest/nature background matching your theme
     }}
   >
-    {/* Dark Greenish Overlay to match brand and ensure readability */}
+
     <div className="absolute inset-0 bg-[#2d4a3e]/60"></div>
   </div>
 
