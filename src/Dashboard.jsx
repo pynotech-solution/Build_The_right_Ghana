@@ -1,194 +1,778 @@
-import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, deleteDoc, updateDoc, doc, serverTimestamp, query, orderBy } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
-import { db, auth } from './firebase';
-import { useNavigate, Link } from 'react-router-dom';
-import { Plus, Trash2, LogOut, LayoutDashboard, Eye, Pencil, X, AlertTriangle, Check, Info, Home } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
+import { createUserWithEmailAndPassword, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { useNavigate } from 'react-router-dom';
+import { X } from 'lucide-react';
+import { auth, db, secondaryAuth } from './firebase';
+import AdminsSection from './Components/Dashboard/AdminsSection';
+import DashboardHeader from './Components/Dashboard/DashboardHeader';
+import DashboardSidebar from './Components/Dashboard/DashboardSidebar';
+import PaymentSection from './Components/Dashboard/PaymentSection';
+import PostFormPanel from './Components/Dashboard/PostFormPanel';
+import PostList from './Components/Dashboard/PostList';
+import PostPreviewCard from './Components/Dashboard/PostPreviewCard';
+import { EMPTY_PAYMENT_FORM, EMPTY_POST_FORM, PREDEFINED_CATEGORIES } from './Components/Dashboard/constants';
+import AddAdminModal from './Components/Dashboard/Modals/AddAdminModal';
+import ChangePasswordModal from './Components/Dashboard/Modals/ChangePasswordModal';
+import ConfirmationModal from './Components/Dashboard/Modals/ConfirmationModal';
+import NotificationModal from './Components/Dashboard/Modals/NotificationModal';
+import RemoveAdminInstructionsModal from './Components/Dashboard/Modals/RemoveAdminInstructionsModal';
+import { createSlug, normalizeEmail } from './Components/Dashboard/utils';
 
-const PREDEFINED_CATEGORIES = [
-  "Education",
-  "Health",
-  "Sanitation",
-  "Human Rights",
-  "Environment",
-  "Technology",
-  "Poverty Alleviation",
-  "Entrepreneurship",
-  "Tolerance"
-];
-
-const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "dzqdfaghg";
-const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "build-the-right-ghanA";
-
-const FormLabel = ({ label, info }) => (
-  <div className="flex items-center gap-2 mb-1">
-    <label className="block text-sm font-medium text-gray-700">{label}</label>
-    <div className="relative group" tabIndex="0">
-      <Info size={16} className="text-gray-400 cursor-help focus:text-[#448c6c] outline-none" />
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus:opacity-100 group-focus:visible transition-all z-10 pointer-events-none text-center">
-        {info}
-        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
-      </div>
-    </div>
-  </div>
-);
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dnzff0rjy';
+const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'BUILD_THE_RIGHT_GHANA';
 
 const Dashboard = () => {
   const [posts, setPosts] = useState([]);
-  const [formData, setFormData] = useState({
-    title: '',
-    category: '',
-    excerpt: '',
-    imageUrl: '',
-    content: '',
-  });
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [formData, setFormData] = useState(EMPTY_POST_FORM);
+  const [paymentForm, setPaymentForm] = useState(EMPTY_PAYMENT_FORM);
   const [loading, setLoading] = useState(false);
+  const [isTracking, setIsTracking] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [editPaymentId, setEditPaymentId] = useState(null);
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
+  const [allAdmins, setAllAdmins] = useState([]);
+  const [dynamicSuperAdmins, setDynamicSuperAdmins] = useState([]);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [loggedInAdminData, setLoggedInAdminData] = useState(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(true);
+  const [activeTab, setActiveTab] = useState('posts');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState(true);
+  const [trackEmail, setTrackEmail] = useState('');
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [newAdminRole, setNewAdminRole] = useState('admin');
+  const [adminStatus, setAdminStatus] = useState({ type: '', message: '' });
+  const [adminModalOpen, setAdminModalOpen] = useState(false);
+  const [removeAdminModal, setRemoveAdminModal] = useState({ show: false, email: '' });
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [passwordStatus, setPasswordStatus] = useState({ type: '', message: '' });
   const [confirmation, setConfirmation] = useState({
     show: false,
     title: '',
     message: '',
     action: null,
-    isDestructive: false
+    isDestructive: false,
+    withInput: false,
+    inputPlaceholder: '',
+    inputValue: '',
+    isProcessing: false,
   });
   const [notification, setNotification] = useState({
     show: false,
-    type: '', // 'success' or 'error'
-    message: ''
+    type: '',
+    message: '',
+    actionLabel: '',
+    onAction: null,
   });
-  const previewDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  const [isCustomCategory, setIsCustomCategory] = useState(false);
+
   const navigate = useNavigate();
+  const previewDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  const fetchPosts = async () => {
-    const q = query(collection(db, "posts"), orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
-    const postsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    setPosts(postsData);
-  };
+  const currentUserEmail = auth.currentUser?.email || '';
+  const formattedCurrentUserEmail = normalizeEmail(currentUserEmail);
+  const superAdminEmails = useMemo(
+    () =>
+      (import.meta.env.VITE_SUPER_ADMIN_EMAILS || '')
+        .split(',')
+        .map((email) => normalizeEmail(email))
+        .filter(Boolean),
+    []
+  );
 
-  useEffect(() => {
-    fetchPosts();
+  const isRootAdmin = superAdminEmails.includes(formattedCurrentUserEmail);
+  const isSuperAdmin = isRootAdmin || dynamicSuperAdmins.includes(formattedCurrentUserEmail);
+  const currentUserCanCreateSuperAdmin = isRootAdmin || loggedInAdminData?.canCreateSuperAdmin === true;
+
+  const combinedAdmins = useMemo(
+    () => [
+      ...(isRootAdmin
+        ? superAdminEmails.map((email) => ({
+            email,
+            isRoot: true,
+            isDisabled: false,
+            canCreateSuperAdmin: true,
+          }))
+        : []),
+      ...allAdmins
+        .filter((admin) => !superAdminEmails.includes(admin.email))
+        .map((admin) => ({
+          email: admin.email,
+          isRoot: false,
+          isDisabled: Boolean(admin.isDisabled),
+          canCreateSuperAdmin: Boolean(admin.canCreateSuperAdmin),
+          createdBy: admin.createdBy,
+          statusModifiedBy: admin.statusModifiedBy,
+          permissionModifiedBy: admin.permissionModifiedBy,
+          roleModifiedBy: admin.roleModifiedBy,
+          disableReason: admin.disableReason,
+        })),
+    ],
+    [allAdmins, isRootAdmin, superAdminEmails]
+  );
+
+  const showNotification = useCallback((type, message, options = {}) => {
+    setNotification({
+      show: true,
+      type,
+      message,
+      actionLabel: options.actionLabel || '',
+      onAction: options.onAction || null,
+    });
   }, []);
 
-  const triggerConfirmation = (title, message, action, isDestructive = false) => {
-    setConfirmation({ show: true, title, message, action, isDestructive });
+  const closeNotification = () => {
+    setNotification({ show: false, type: '', message: '', actionLabel: '', onAction: null });
+  };
+
+  const triggerConfirmation = (title, message, action, isDestructive = false, withInput = false, inputPlaceholder = '') => {
+    setConfirmation({ show: true, title, message, action, isDestructive, withInput, inputPlaceholder, inputValue: '', isProcessing: false });
   };
 
   const closeConfirmation = () => {
-    setConfirmation({ show: false, title: '', message: '', action: null, isDestructive: false });
+    setConfirmation({ show: false, title: '', message: '', action: null, isDestructive: false, withInput: false, inputPlaceholder: '', inputValue: '', isProcessing: false });
   };
 
-  const handleConfirmAction = () => {
-    if (confirmation.action) confirmation.action();
-    closeConfirmation();
+  const handleConfirmAction = async () => {
+    setConfirmation((prev) => ({ ...prev, isProcessing: true }));
+    try {
+      if (confirmation.action) {
+        await confirmation.action(confirmation.inputValue);
+      }
+    } finally {
+      closeConfirmation();
+    }
   };
 
-  const closeNotification = () => {
-    setNotification({ show: false, type: '', message: '' });
+  const resetPostForm = () => {
+    setFormData(EMPTY_POST_FORM);
+    setIsCustomCategory(false);
+    setEditId(null);
   };
+
+  const resetPaymentForm = () => {
+    setPaymentForm(EMPTY_PAYMENT_FORM);
+    setEditPaymentId(null);
+  };
+
+  const fetchPosts = useCallback(async () => {
+    try {
+      const postsQuery = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+      const querySnapshot = await getDocs(postsQuery);
+      setPosts(querySnapshot.docs.map((snapshot) => ({ id: snapshot.id, ...snapshot.data() })));
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+      showNotification('error', 'Failed to load posts.');
+    }
+  }, [showNotification]);
+
+  const fetchPaymentMethods = useCallback(async () => {
+    try {
+      const paymentQuery = query(collection(db, 'paymentMethods'));
+      const querySnapshot = await getDocs(paymentQuery);
+      setPaymentMethods(querySnapshot.docs.map((snapshot) => ({ id: snapshot.id, ...snapshot.data() })));
+    } catch (error) {
+      console.error('Error fetching payment methods:', error);
+      showNotification('error', 'Failed to load payment methods.');
+    }
+  }, [showNotification]);
+
+  const fetchDynamicSuperAdmins = useCallback(async () => {
+    try {
+      const superAdminQuery = query(collection(db, 'superAdmins'));
+      const querySnapshot = await getDocs(superAdminQuery);
+      setDynamicSuperAdmins(querySnapshot.docs.map((snapshot) => snapshot.id));
+    } catch (error) {
+      console.error('Error fetching super admins:', error);
+      showNotification('error', 'Failed to load super admin permissions.');
+    }
+  }, [showNotification]);
+
+  const fetchAllAdmins = useCallback(async () => {
+    try {
+      const adminQuery = query(collection(db, 'allAdmins'));
+      const querySnapshot = await getDocs(adminQuery);
+      setAllAdmins(querySnapshot.docs.map((snapshot) => snapshot.data()));
+    } catch (error) {
+      if (error.code !== 'permission-denied') {
+        console.error('Error fetching all admins:', error);
+        showNotification('error', 'Failed to load the admin directory.');
+      }
+    }
+  }, [showNotification]);
+
+  useEffect(() => {
+    const checkDisabledStatus = async () => {
+      const email = auth.currentUser?.email;
+      if (!email) {
+        setIsCheckingStatus(false);
+        return;
+      }
+
+      const formattedEmail = normalizeEmail(email);
+      if (superAdminEmails.includes(formattedEmail)) {
+        setLoggedInAdminData({ email: formattedEmail, isDisabled: false, canCreateSuperAdmin: true });
+        setIsCheckingStatus(false);
+        return;
+      }
+
+      try {
+        const adminDoc = await getDoc(doc(db, 'allAdmins', formattedEmail));
+        if (adminDoc.exists()) {
+          const data = adminDoc.data();
+          setLoggedInAdminData(data);
+          setAccessDenied(Boolean(data.isDisabled));
+        } else {
+          setLoggedInAdminData({ email: formattedEmail, isDisabled: false, canCreateSuperAdmin: false });
+        }
+      } catch (error) {
+        console.error('Error checking disabled status:', error);
+        setLoggedInAdminData({ email: formattedEmail, isDisabled: false, canCreateSuperAdmin: false });
+      } finally {
+        setIsCheckingStatus(false);
+      }
+    };
+
+    checkDisabledStatus();
+    fetchPosts();
+    fetchPaymentMethods();
+    fetchDynamicSuperAdmins();
+    fetchAllAdmins();
+  }, [fetchAllAdmins, fetchDynamicSuperAdmins, fetchPaymentMethods, fetchPosts, superAdminEmails]);
 
   const handleLogout = () => {
+    triggerConfirmation('Logout', 'Are you sure you want to logout?', async () => {
+      await signOut(auth);
+      navigate('/admin/login');
+    });
+  };
+
+  const openAdminModal = () => {
+    setAdminModalOpen(true);
+    setIsSidebarOpen(false);
+  };
+
+  const closeAdminModal = () => {
+    setAdminModalOpen(false);
+    setAdminStatus({ type: '', message: '' });
+  };
+
+  const handleCreateAdmin = async (event) => {
+    event.preventDefault();
+    setAdminStatus({ type: 'loading', message: 'Creating admin...' });
+
+    const formattedEmail = normalizeEmail(newAdminEmail);
+    if (!formattedEmail || !newAdminPassword.trim()) {
+      setAdminStatus({ type: 'error', message: 'Email and password are required.' });
+      return;
+    }
+
+    try {
+      await createUserWithEmailAndPassword(secondaryAuth, formattedEmail, newAdminPassword);
+      await signOut(secondaryAuth);
+
+      if (newAdminRole === 'superadmin') {
+        await setDoc(doc(db, 'superAdmins', formattedEmail), {
+          email: formattedEmail,
+          createdAt: serverTimestamp(),
+          upgradedBy: currentUserEmail,
+        });
+      }
+
+      await setDoc(
+        doc(db, 'allAdmins', formattedEmail),
+        {
+          email: formattedEmail,
+          createdAt: serverTimestamp(),
+          canCreateSuperAdmin: false,
+          createdBy: currentUserEmail,
+        },
+        { merge: true }
+      );
+
+      setAdminStatus({ type: 'success', message: 'New admin successfully created!' });
+      setNewAdminEmail('');
+      setNewAdminPassword('');
+      setNewAdminRole('admin');
+      await Promise.all([fetchDynamicSuperAdmins(), fetchAllAdmins()]);
+
+      window.setTimeout(() => {
+        closeAdminModal();
+      }, 2000);
+    } catch (error) {
+      console.error('Error creating admin:', error);
+      setAdminStatus({ type: 'error', message: error.message || 'Failed to create admin.' });
+    }
+  };
+
+  const handlePasswordSubmit = async (event) => {
+    event.preventDefault();
+    if (!passwordForm.currentPassword) {
+      setPasswordStatus({ type: 'error', message: 'Current password is required.' });
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordStatus({ type: 'error', message: 'Passwords do not match.' });
+      return;
+    }
+    if (passwordForm.newPassword.length < 6) {
+      setPasswordStatus({ type: 'error', message: 'Password must be at least 6 characters.' });
+      return;
+    }
+
+    setPasswordStatus({ type: 'loading', message: 'Verifying & updating password...' });
+    try {
+      const credential = EmailAuthProvider.credential(auth.currentUser.email, passwordForm.currentPassword);
+      await reauthenticateWithCredential(auth.currentUser, credential);
+      
+      await updatePassword(auth.currentUser, passwordForm.newPassword);
+      setPasswordStatus({ type: 'success', message: 'Password updated successfully!' });
+      setTimeout(() => {
+        setPasswordModalOpen(false);
+        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        setPasswordStatus({ type: '', message: '' });
+      }, 2000);
+    } catch (error) {
+      console.error('Error updating password:', error);
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+        setPasswordStatus({ type: 'error', message: 'Incorrect current password.' });
+      } else if (error.code === 'auth/requires-recent-login') {
+        setPasswordStatus({ type: 'error', message: 'This operation requires a recent login. Please log out and log back in to change your password.' });
+      } else {
+        setPasswordStatus({ type: 'error', message: error.message || 'Failed to update password.' });
+      }
+    }
+  };
+
+  const handleUpgradeAdmin = (email) => {
+    triggerConfirmation('Upgrade to Super Admin', `Are you sure you want to grant Super Admin privileges to ${email}?`, async () => {
+      try {
+        await setDoc(doc(db, 'superAdmins', email), {
+          email,
+          createdAt: serverTimestamp(),
+          upgradedBy: currentUserEmail,
+        });
+        await setDoc(
+          doc(db, 'allAdmins', email),
+          {
+            roleModifiedBy: currentUserEmail,
+            roleModifiedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+        await Promise.all([fetchDynamicSuperAdmins(), fetchAllAdmins()]);
+        showNotification('success', `${email} is now a Super Admin!`);
+      } catch (error) {
+        console.error('Error upgrading admin:', error);
+        showNotification('error', 'Failed to upgrade admin.');
+      }
+    });
+  };
+
+  const handleTrackAdmin = async (event) => {
+    event.preventDefault();
+    const formattedEmail = normalizeEmail(trackEmail);
+    if (!formattedEmail) return;
+
+    setIsTracking(true);
+    try {
+      await setDoc(
+        doc(db, 'allAdmins', formattedEmail),
+        {
+          email: formattedEmail,
+          createdAt: serverTimestamp(),
+          canCreateSuperAdmin: false,
+          createdBy: currentUserEmail,
+        },
+        { merge: true }
+      );
+      setTrackEmail('');
+      await fetchAllAdmins();
+      showNotification('success', `${formattedEmail} added to the tracking list!`);
+    } catch (error) {
+      console.error('Error tracking admin:', error);
+      showNotification('error', 'Failed to track admin.');
+    } finally {
+      setIsTracking(false);
+    }
+  };
+
+  const handleRevokeSuperAdmin = (email) => {
     triggerConfirmation(
-      'Logout',
-      'Are you sure you want to logout?',
+      'Revoke Super Admin',
+      `Are you sure you want to revoke Super Admin privileges from ${email}? They will become a regular admin.`,
       async () => {
-        await signOut(auth);
-        navigate('/admin/login');
+        try {
+          await deleteDoc(doc(db, 'superAdmins', email));
+          await setDoc(
+            doc(db, 'allAdmins', email),
+            {
+              roleModifiedBy: currentUserEmail,
+              roleModifiedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          await Promise.all([fetchDynamicSuperAdmins(), fetchAllAdmins()]);
+          showNotification('success', 'Privileges revoked successfully!');
+        } catch (error) {
+          console.error('Error revoking super admin:', error);
+          showNotification('error', 'Failed to revoke super admin privileges.');
+        }
+      },
+      true
+    );
+  };
+
+  const handleRemoveAdmin = (email) => {
+    if (!isRootAdmin) {
+      showNotification('error', 'Only the Root Admin can permanently remove other admins.');
+      return;
+    }
+
+    triggerConfirmation(
+      'Remove Admin Access',
+      `Are you sure you want to remove ${email}? They will be disabled immediately, but you must manually delete their account in Firebase to fully complete the removal.`,
+      async () => {
+        try {
+          await setDoc(
+            doc(db, 'allAdmins', email),
+            {
+              isDisabled: true,
+              statusModifiedBy: currentUserEmail,
+              statusModifiedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          if (dynamicSuperAdmins.includes(email)) {
+            await deleteDoc(doc(db, 'superAdmins', email));
+          }
+          await Promise.all([fetchAllAdmins(), fetchDynamicSuperAdmins()]);
+          setRemoveAdminModal({ show: true, email });
+        } catch (error) {
+          console.error('Error removing admin:', error);
+          showNotification('error', 'Failed to remove admin.');
+        }
+      },
+      true
+    );
+  };
+
+  const handleToggleDisableAdmin = (email, currentlyDisabled) => {
+    const isSelf = currentUserEmail && email === normalizeEmail(currentUserEmail);
+    const isDisabling = !currentlyDisabled;
+
+    triggerConfirmation(
+      currentlyDisabled ? 'Enable Admin' : (isSelf ? 'Disable Your Account' : 'Disable Admin'),
+      isSelf 
+        ? 'Are you sure you want to disable your own account? You will be immediately logged out and locked out of the dashboard. You will need another Super Admin to re-enable your access.'
+        : `Are you sure you want to ${currentlyDisabled ? 'enable' : 'disable'} ${email}? ${currentlyDisabled ? 'They will regain access to manage the platform.' : 'They will be completely blocked from creating, editing, or deleting anything.'}`,
+      async (reason) => {
+        try {
+          const updateData = {
+            isDisabled: !currentlyDisabled,
+            statusModifiedBy: currentUserEmail,
+            statusModifiedAt: serverTimestamp(),
+          };
+
+          if (isDisabling && reason && reason.trim() !== '') {
+            updateData.disableReason = reason.trim();
+          } else if (!isDisabling) {
+            updateData.disableReason = null; // Clear reason if re-enabled
+          }
+          
+          await setDoc(doc(db, 'allAdmins', email), updateData, { merge: true });
+          
+          if (isSelf && !currentlyDisabled) {
+            showNotification('success', 'Your account has been successfully disabled. Logging you out securely...');
+            setTimeout(async () => {
+              await signOut(auth);
+              navigate('/admin/login');
+            }, 3500);
+            return;
+          }
+
+          await fetchAllAdmins();
+          showNotification('success', `Admin successfully ${currentlyDisabled ? 'enabled' : 'disabled'}!`);
+        } catch (error) {
+          console.error('Error toggling admin status:', error);
+          showNotification('error', 'Failed to update admin status.');
+        }
+      },
+      isDisabling,
+      isDisabling,
+      isDisabling ? (isSelf ? 'Optional: Why are you disabling your account?' : 'Optional: Reason for disabling') : ''
+    );
+  };
+
+  const handleToggleCreateSuperAdmin = (email, currentStatus) => {
+    triggerConfirmation(
+      currentStatus ? 'Revoke Super Admin Creation' : 'Allow Super Admin Creation',
+      `Are you sure you want to ${currentStatus ? 'revoke' : 'grant'} permission for ${email} to create other Super Admins?`,
+      async () => {
+        try {
+          await setDoc(
+            doc(db, 'allAdmins', email),
+            {
+              canCreateSuperAdmin: !currentStatus,
+              permissionModifiedBy: currentUserEmail,
+              permissionModifiedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          await fetchAllAdmins();
+          showNotification('success', 'Permission successfully updated!');
+        } catch (error) {
+          console.error('Error toggling permission:', error);
+          showNotification('error', 'Failed to update permission.');
+        }
       }
     );
   };
 
+  const handleDisableSelf = () => {
+    triggerConfirmation(
+      'Disable Your Account',
+      'Are you sure you want to disable your own account? You will be immediately logged out and locked out of the dashboard. You will need a Super Admin to re-enable your access.',
+      async (reason) => {
+        try {
+          const updateData = {
+            isDisabled: true,
+            statusModifiedBy: formattedCurrentUserEmail,
+            statusModifiedAt: serverTimestamp(),
+          };
+
+          if (reason && reason.trim() !== '') {
+            updateData.disableReason = reason.trim();
+          }
+
+          await setDoc(doc(db, 'allAdmins', formattedCurrentUserEmail), updateData, { merge: true });
+          showNotification('success', 'Your account has been successfully disabled. Logging you out securely...');
+          setTimeout(async () => {
+            await signOut(auth);
+            navigate('/admin/login');
+          }, 3500);
+        } catch (error) {
+          console.error('Error disabling self:', error);
+          showNotification('error', 'Failed to disable your account.');
+        }
+      },
+      true,
+      true,
+      'Optional: Why are you disabling your account?'
+    );
+  };
+
+  const updatePostField = (field, value) => {
+    setFormData((current) => ({ ...current, [field]: value }));
+  };
+
+  const updatePaymentField = (field, value) => {
+    setPaymentForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleCategoryChange = (value) => {
+    if (value === 'Other') {
+      setIsCustomCategory(true);
+      updatePostField('category', '');
+      return;
+    }
+    setIsCustomCategory(false);
+    updatePostField('category', value);
+  };
+
   const uploadFile = async (file) => {
+    if (!file) return;
+
+    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+      showNotification('error', 'Cloudinary configuration is missing. Please check your .env file.');
+      return;
+    }
+
     setUploading(true);
     const data = new FormData();
-    data.append("file", file);
-    data.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-    data.append("cloud_name", CLOUDINARY_CLOUD_NAME);
+    data.append('file', file);
+    data.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    data.append('cloud_name', CLOUDINARY_CLOUD_NAME);
 
     try {
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
-        method: "POST",
-        body: data
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+        method: 'POST',
+        body: data,
       });
-      const fileData = await res.json();
-      if (!res.ok || !fileData.secure_url) {
+      const fileData = await response.json();
+
+      if (!response.ok || !fileData.secure_url) {
         throw new Error(fileData.error?.message || 'Cloudinary upload failed.');
       }
 
-      setFormData(prev => ({ ...prev, imageUrl: fileData.secure_url }));
+      updatePostField('imageUrl', fileData.secure_url);
     } catch (error) {
-      console.error("Error uploading image: ", error);
-      setNotification({ show: true, type: 'error', message: error.message || 'Error uploading image' });
+      console.error('Error uploading image:', error);
+      showNotification('error', error.message || 'Error uploading image.');
     } finally {
       setUploading(false);
     }
   };
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
+  const handleImageUpload = async (event) => {
+    const file = event.target.files?.[0];
     if (!file) return;
     await uploadFile(file);
   };
 
-  const handlePaste = async (e) => {
-    const items = e.clipboardData.items;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf("image") !== -1) {
-        e.preventDefault();
-        const file = items[i].getAsFile();
-        await uploadFile(file);
-        return;
+  const handlePaste = async (event) => {
+    const items = event.clipboardData?.items || [];
+    for (const item of items) {
+      if (item.type.includes('image')) {
+        event.preventDefault();
+        await uploadFile(item.getAsFile());
+        break;
       }
     }
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!formData.imageUrl) {
-      setNotification({ show: true, type: 'error', message: 'Please upload an image for the post.' });
+  const handleSubmit = (event) => {
+    event.preventDefault();
+
+    const trimmedTitle = formData.title.trim();
+    const trimmedCategory = formData.category.trim();
+    const trimmedExcerpt = formData.excerpt.trim();
+    const trimmedContent = formData.content.trim();
+    const trimmedImageUrl = formData.imageUrl.trim();
+
+    if (!trimmedTitle || !trimmedCategory || !trimmedExcerpt || !trimmedContent) {
+      showNotification('error', 'Please complete all post fields before saving.');
       return;
     }
-    triggerConfirmation(
-      editId ? 'Update Post' : 'Publish Post',
-      `Are you sure you want to ${editId ? 'update' : 'publish'} this post?`,
-      processSubmit
-    );
+
+    if (!trimmedImageUrl) {
+      showNotification('error', 'Please upload an image for the post.');
+      return;
+    }
+
+    triggerConfirmation(editId ? 'Update Post' : 'Publish Post', `Are you sure you want to ${editId ? 'update' : 'publish'} this post?`, processSubmit);
   };
 
   const processSubmit = async () => {
     setLoading(true);
+    const sanitizedPost = {
+      title: formData.title.trim(),
+      category: formData.category.trim(),
+      excerpt: formData.excerpt.trim(),
+      imageUrl: formData.imageUrl.trim(),
+      content: formData.content.trim(),
+    };
+
     try {
-      const slug = formData.title.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
-      
-      if (editId) {
-        const postRef = doc(db, "posts", editId);
-        await updateDoc(postRef, {
-          ...formData,
-          slug
-        });
-        setNotification({ show: true, type: 'success', message: 'Post updated successfully!' });
-        setEditId(null);
-      } else {
-        const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-        await addDoc(collection(db, "posts"), {
-          ...formData,
-          slug,
-          date,
-          createdAt: serverTimestamp()
-        });
-        setNotification({ show: true, type: 'success', message: 'Post added successfully!' });
+      const slug = createSlug(sanitizedPost.title);
+      if (!slug) {
+        throw new Error('Please enter a valid title before saving.');
       }
-      
-      setFormData({ title: '', category: '', excerpt: '', imageUrl: '', content: '' });
-      setIsCustomCategory(false);
-      fetchPosts();
+
+      if (editId) {
+        await updateDoc(doc(db, 'posts', editId), {
+          ...sanitizedPost,
+          slug,
+          lastEditedBy: currentUserEmail,
+          lastEditedAt: serverTimestamp(),
+        });
+        showNotification('success', 'Post updated successfully!', {
+          actionLabel: 'Check Blog Page',
+          onAction: () => navigate('/blog'),
+        });
+      } else {
+        await addDoc(collection(db, 'posts'), {
+          ...sanitizedPost,
+          slug,
+          date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+          createdAt: serverTimestamp(),
+          createdBy: currentUserEmail,
+        });
+        showNotification('success', 'Post added successfully!', {
+          actionLabel: 'Check Blog Page',
+          onAction: () => navigate('/blog'),
+        });
+      }
+
+      resetPostForm();
+      await fetchPosts();
     } catch (error) {
-      console.error("Error saving document: ", error);
-      setNotification({ show: true, type: 'error', message: 'Error saving post' });
+      console.error('Error saving document:', error);
+      showNotification('error', error.message || 'Error saving post.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  const handlePaymentSubmit = (event) => {
+    event.preventDefault();
+
+    const provider = paymentForm.provider.trim();
+    const accountNumber = paymentForm.accountNumber.trim();
+    const accountName = paymentForm.accountName.trim();
+
+    if (!provider || !accountNumber || !accountName) {
+      showNotification('error', 'Please complete all payment fields before saving.');
+      return;
+    }
+
+    triggerConfirmation(
+      editPaymentId ? 'Update Payment Method' : 'Add Payment Method',
+      `Are you sure you want to ${editPaymentId ? 'update' : 'add'} this payment method?`,
+      processPaymentSubmit
+    );
+  };
+
+  const processPaymentSubmit = async () => {
+    setLoading(true);
+    const sanitizedPayment = {
+      type: paymentForm.type,
+      provider: paymentForm.provider.trim(),
+      accountName: paymentForm.accountName.trim(),
+      accountNumber: paymentForm.accountNumber.trim(),
+    };
+
+    try {
+      if (editPaymentId) {
+        await updateDoc(doc(db, 'paymentMethods', editPaymentId), {
+          ...sanitizedPayment,
+          lastEditedBy: currentUserEmail,
+          lastEditedAt: serverTimestamp(),
+        });
+        showNotification('success', 'Payment method updated successfully!');
+      } else {
+        await addDoc(collection(db, 'paymentMethods'), {
+          ...sanitizedPayment,
+          createdBy: currentUserEmail,
+          createdAt: serverTimestamp(),
+        });
+        showNotification('success', 'Payment method added successfully!');
+      }
+
+      resetPaymentForm();
+      await fetchPaymentMethods();
+    } catch (error) {
+      console.error('Error saving payment method:', error);
+      showNotification('error', error.message || 'Error saving payment method.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = (id) => {
@@ -196,8 +780,32 @@ const Dashboard = () => {
       'Delete Post',
       'Are you sure you want to delete this post? This action cannot be undone.',
       async () => {
-        await deleteDoc(doc(db, "posts", id));
-        fetchPosts();
+        try {
+          await deleteDoc(doc(db, 'posts', id));
+          await fetchPosts();
+          showNotification('success', 'Post deleted successfully.');
+        } catch (error) {
+          console.error('Error deleting post:', error);
+          showNotification('error', error.message || 'Failed to delete post.');
+        }
+      },
+      true
+    );
+  };
+
+  const handleDeletePayment = (id) => {
+    triggerConfirmation(
+      'Delete Payment Method',
+      'Are you sure you want to delete this payment method? This action cannot be undone.',
+      async () => {
+        try {
+          await deleteDoc(doc(db, 'paymentMethods', id));
+          await fetchPaymentMethods();
+          showNotification('success', 'Payment method deleted successfully.');
+        } catch (error) {
+          console.error('Error deleting payment method:', error);
+          showNotification('error', error.message || 'Failed to delete payment method.');
+        }
       },
       true
     );
@@ -205,316 +813,208 @@ const Dashboard = () => {
 
   const handleEdit = (post) => {
     setFormData({
-      title: post.title,
-      category: post.category,
-      excerpt: post.excerpt,
-      imageUrl: post.imageUrl,
-      content: post.content,
+      title: post.title || '',
+      category: post.category || '',
+      excerpt: post.excerpt || '',
+      imageUrl: post.imageUrl || '',
+      content: post.content || '',
     });
     setEditId(post.id);
     setIsCustomCategory(!PREDEFINED_CATEGORIES.includes(post.category));
+    setActiveTab('posts');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleCancelEdit = () => {
-    triggerConfirmation(
-      'Cancel Edit',
-      'Are you sure you want to cancel editing? Unsaved changes will be lost.',
-      () => {
-        setFormData({ title: '', category: '', excerpt: '', imageUrl: '', content: '' });
-        setIsCustomCategory(false);
-        setEditId(null);
-      },
-      true
-    );
+  const handleEditPayment = (method) => {
+    setPaymentForm({
+      type: method.type || 'momo',
+      provider: method.provider || '',
+      accountName: method.accountName || '',
+      accountNumber: method.accountNumber || '',
+    });
+    setEditPaymentId(method.id);
+    setActiveTab('payments');
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Navbar */}
-      <nav className="bg-[#2d4e41] text-white p-4 px-8 flex justify-between items-center shadow-md">
-        <div className="flex items-center gap-2 font-bold text-xl">
-          <LayoutDashboard /> Admin Dashboard
-        </div>
-        <div className="flex items-center gap-4">
-          <Link to="/" className="flex items-center gap-2 hover:text-gray-300 transition-colors font-medium">
-            <Home size={20} /> <span className="hidden sm:inline">Back to Website</span>
-          </Link>
-          <button onClick={handleLogout} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors shadow-sm">
-            <LogOut size={18} /> <span className="hidden sm:inline">Logout</span>
+  const handleCancelEdit = () => {
+    triggerConfirmation('Cancel Edit', 'Are you sure you want to cancel editing? Unsaved changes will be lost.', () => {
+      resetPostForm();
+    }, true);
+  };
+
+  const handleCancelPaymentEdit = () => {
+    triggerConfirmation('Cancel Edit', 'Are you sure you want to cancel editing?', () => {
+      resetPaymentForm();
+    }, true);
+  };
+
+  if (isCheckingStatus) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+        <div className="w-12 h-12 border-4 border-[#448c6c] border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-[#2d4e41] font-bold text-lg animate-pulse tracking-wide">Verifying Access...</p>
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-[#1f362d] flex items-center justify-center px-4">
+        <div className="bg-white rounded-xl shadow-2xl p-8 max-w-sm w-full text-center">
+          <div className="mx-auto w-16 h-16 flex items-center justify-center rounded-full mb-4 bg-red-100 text-red-600">
+            <X size={32} />
+          </div>
+          <h3 className="text-2xl font-bold text-gray-800 mb-2">Access Denied</h3>
+          <p className="text-gray-600 mb-6">
+            You do not have the required permissions to access this dashboard. Please contact the administrator if you need assistance.
+          </p>
+          <button
+            onClick={async () => {
+              await signOut(auth);
+              navigate('/admin/login');
+            }}
+            className="px-8 py-3 w-full rounded-full font-bold text-white bg-red-500 hover:bg-red-600 transition-colors shadow-lg"
+          >
+            Return to Login
           </button>
         </div>
-      </nav>
+      </div>
+    );
+  }
 
-      <div className="max-w-7xl mx-auto p-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Add Post Form */}
-          <div className="lg:col-span-1">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 sticky top-8">
-              <h3 className="text-xl font-bold text-[#2d4e41] mb-6 flex items-center gap-2">
-                {editId ? (
-                  <>
-                    <Pencil size={24} /> Edit Post
-                  </>
-                ) : (
-                  <>
-                    <Plus size={24} /> Add New Post
-                  </>
-                )}
-              </h3>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <FormLabel label="Title" info="The main headline of your blog post." />
-                  <input
-                    type="text"
-                    required
-                    value={formData.title}
-                    onChange={(e) => setFormData({...formData, title: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-[#448c6c] outline-none"
-                  />
-                </div>
-                <div>
-                  <FormLabel label="Category" info="The topic this post belongs to (e.g., Education, Health)." />
-                  <select
-                    value={isCustomCategory ? 'Other' : formData.category}
-                    onChange={(e) => {
-                      if (e.target.value === 'Other') {
-                        setIsCustomCategory(true);
-                        setFormData({ ...formData, category: '' });
-                      } else {
-                        setIsCustomCategory(false);
-                        setFormData({ ...formData, category: e.target.value });
-                      }
-                    }}
-                    className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-[#448c6c] outline-none mb-2 bg-white"
-                  >
-                    <option value="" disabled>Select a category</option>
-                    {PREDEFINED_CATEGORIES.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                    <option value="Other">Other (Type your own)</option>
-                  </select>
-                  
-                  {isCustomCategory && (
-                    <input
-                      type="text"
-                      required
-                      placeholder="Enter custom category"
-                      value={formData.category}
-                      onChange={(e) => setFormData({...formData, category: e.target.value})}
-                      className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-[#448c6c] outline-none"
-                    />
-                  )}
-                </div>
-                <div>
-                  <FormLabel label="Image" info="Upload an image, paste an image URL, or paste an image from your clipboard." />
-                  <div className="space-y-2">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-[#448c6c] outline-none file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#e6f0eb] file:text-[#2d4e41] hover:file:bg-[#d1e3da]"
-                    />
-                    <input
-                      type="url"
-                      placeholder="Or paste image URL here (or paste image from clipboard)"
-                      value={formData.imageUrl}
-                      onChange={(e) => setFormData({...formData, imageUrl: e.target.value})}
-                      onPaste={handlePaste}
-                      className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-[#448c6c] outline-none"
-                    />
-                  </div>
-                  {uploading && <p className="text-sm text-[#448c6c] mt-1">Uploading image...</p>}
-                  {formData.imageUrl && (
-                    <div className="mt-2">
-                      <img src={formData.imageUrl} alt="Preview" className="h-24 w-auto rounded-lg border border-gray-300" />
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <FormLabel label="Excerpt" info="A short summary (1-2 sentences) displayed on the blog home page." />
-                  <textarea
-                    required
-                    rows="3"
-                    value={formData.excerpt}
-                    onChange={(e) => setFormData({...formData, excerpt: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-[#448c6c] outline-none"
-                  ></textarea>
-                </div>
-                <div>
-                  <FormLabel label="Content" info="The full body of your article. You can write multiple paragraphs here." />
-                  <textarea
-                    required
-                    rows="6"
-                    value={formData.content}
-                    onChange={(e) => setFormData({...formData, content: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-[#448c6c] outline-none"
-                  ></textarea>
-                </div>
-                
-                {editId && (
-                  <button
-                    type="button"
-                    onClick={handleCancelEdit}
-                    className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 rounded-lg transition-all shadow-md mb-2 flex items-center justify-center gap-2"
-                  >
-                    <X size={18} /> Cancel Edit
-                  </button>
-                )}
+  return (
+    <div className="min-h-screen bg-gray-50 flex">
+      <DashboardSidebar
+        activeTab={activeTab}
+        isSidebarOpen={isSidebarOpen}
+        isDesktopSidebarOpen={isDesktopSidebarOpen}
+        isSuperAdmin={isSuperAdmin}
+        isRootAdmin={isRootAdmin}
+        onClose={() => setIsSidebarOpen(false)}
+        onLogout={handleLogout}
+        onDisableSelf={handleDisableSelf}
+        onOpenAdminModal={openAdminModal}
+        onChangePassword={() => setPasswordModalOpen(true)}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          setIsSidebarOpen(false);
+        }}
+      />
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-[#448c6c] hover:bg-[#366d54] text-white font-bold py-3 rounded-lg transition-all shadow-md disabled:opacity-50"
-                >
-                  {loading ? 'Saving...' : (editId ? 'Update Post' : 'Publish Post')}
-                </button>
-              </form>
-            </div>
-          </div>
+      <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out ${isDesktopSidebarOpen ? 'lg:ml-64' : 'lg:ml-0'}`}>
+        <DashboardHeader
+          activeTab={activeTab}
+          currentUserEmail={currentUserEmail}
+          isSuperAdmin={isSuperAdmin}
+          loggedInAdminData={loggedInAdminData}
+          onOpenSidebar={() => setIsSidebarOpen(true)}
+          isDesktopSidebarOpen={isDesktopSidebarOpen}
+          onToggleDesktopSidebar={() => setIsDesktopSidebarOpen((prev) => !prev)}
+        />
 
-          {/* Live Preview */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-8">
-              <h3 className="text-xl font-bold text-[#2d4e41] mb-6 flex items-center gap-2">
-                <Eye size={24} /> Live Preview
-              </h3>
-              <div className="flex flex-col bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                <div className="h-52 overflow-hidden relative bg-gray-100">
-                  {formData.imageUrl ? (
-                    <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-400">No Image</div>
-                  )}
-                  {formData.category && (
-                    <div className="absolute top-4 left-4 bg-[#448c6c] text-white text-xs font-bold px-3 py-1 rounded-full uppercase">
-                      {formData.category}
-                    </div>
-                  )}
-                </div>
-                <div className="p-6 flex flex-col flex-grow">
-                  <span className="text-sm text-gray-500 font-medium mb-2">{previewDate}</span>
-                  <h4 className="text-[#2d4e41] text-xl font-bold mb-3 line-clamp-2">{formData.title || "Post Title"}</h4>
-                  <p className="text-gray-600 text-sm leading-relaxed mb-6 line-clamp-3">{formData.excerpt || "Post excerpt..."}</p>
-                  <div className="mt-auto">
-                    <span className="text-[#448c6c] font-bold text-sm uppercase tracking-wider flex items-center gap-2">
-                      Read Full Story <span>→</span>
-                    </span>
-                  </div>
-                </div>
+        <main className="p-4 sm:p-6 lg:p-8">
+          {activeTab === 'posts' && (
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+              <div className="lg:col-span-1">
+                <PostFormPanel
+                  editId={editId}
+                  formData={formData}
+                  isCustomCategory={isCustomCategory}
+                  loading={loading}
+                  uploading={uploading}
+                  onCancelEdit={handleCancelEdit}
+                  onCategoryChange={handleCategoryChange}
+                  onFieldChange={updatePostField}
+                  onImageUpload={handleImageUpload}
+                  onPaste={handlePaste}
+                  onSubmit={handleSubmit}
+                />
+              </div>
+              <div className="lg:col-span-1">
+                <PostPreviewCard formData={formData} previewDate={previewDate} />
+              </div>
+              <div className="lg:col-span-1">
+                <PostList posts={posts} onDelete={handleDelete} onEdit={handleEdit} />
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Posts List */}
-          <div className="lg:col-span-1">
-            <h3 className="text-2xl font-bold text-[#2d4e41] mb-6">Existing Posts</h3>
-            <div className="space-y-4">
-              {posts.map((post) => (
-                <div key={post.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex gap-4 items-start">
-                  <img src={post.imageUrl} alt={post.title} className="w-24 h-24 object-cover rounded-lg" />
-                  <div className="flex-grow">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-bold text-lg text-gray-800">{post.title}</h4>
-                        <span className="text-xs font-bold text-[#448c6c] uppercase">{post.category}</span>
-                        <span className="text-xs text-gray-500 ml-2">{post.date}</span>
-                      </div>
-                      <div className="flex gap-2">
-                      <button 
-                        onClick={() => handleEdit(post)}
-                        className="text-blue-500 hover:bg-blue-50 p-2 rounded-full transition-colors"
-                      >
-                        <Pencil size={20} />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(post.id)}
-                        className="text-red-500 hover:bg-red-50 p-2 rounded-full transition-colors"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                      </div>
-                    </div>
-                    <p className="text-gray-600 text-sm mt-2 line-clamp-2">{post.excerpt}</p>
-                  </div>
-                </div>
-              ))}
-              {posts.length === 0 && (
-                <p className="text-gray-500 text-center py-10">No posts found. Start creating one!</p>
-              )}
-            </div>
-          </div>
+          {activeTab === 'payments' && isSuperAdmin && (
+            <PaymentSection
+              editPaymentId={editPaymentId}
+              loading={loading}
+              paymentForm={paymentForm}
+              paymentMethods={paymentMethods}
+              onCancelEdit={handleCancelPaymentEdit}
+              onDelete={handleDeletePayment}
+              onEdit={handleEditPayment}
+              onFieldChange={updatePaymentField}
+              onSubmit={handlePaymentSubmit}
+            />
+          )}
 
-        </div>
+          {activeTab === 'admins' && isSuperAdmin && (
+            <AdminsSection
+              combinedAdmins={combinedAdmins}
+              currentUserEmail={currentUserEmail}
+              dynamicSuperAdmins={dynamicSuperAdmins}
+              isRootAdmin={isRootAdmin}
+              trackEmail={trackEmail}
+              isTracking={isTracking}
+              onFieldChange={setTrackEmail}
+              onRemoveAdmin={handleRemoveAdmin}
+              onRevokeSuperAdmin={handleRevokeSuperAdmin}
+              onSubmit={handleTrackAdmin}
+              onToggleCreateSuperAdmin={handleToggleCreateSuperAdmin}
+              onToggleDisableAdmin={handleToggleDisableAdmin}
+              onUpgradeAdmin={handleUpgradeAdmin}
+            />
+          )}
+        </main>
       </div>
 
-      {/* Confirmation Modal */}
-      {confirmation.show && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={closeConfirmation}></div>
-          <div className="relative bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full transform transition-all scale-100">
-            <div className="flex items-center gap-3 mb-4">
-              {confirmation.isDestructive && <AlertTriangle className="text-red-500" size={24} />}
-              <h3 className={`text-xl font-bold ${confirmation.isDestructive ? 'text-red-600' : 'text-[#2d4e41]'}`}>
-                {confirmation.title}
-              </h3>
-            </div>
-            <p className="text-gray-600 mb-6 leading-relaxed">{confirmation.message}</p>
-            <div className="flex justify-end gap-3">
-              <button 
-                onClick={closeConfirmation}
-                className="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 font-medium transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleConfirmAction}
-                className={`px-4 py-2 rounded-lg text-white font-bold transition-colors shadow-md ${
-                  confirmation.isDestructive ? 'bg-red-500 hover:bg-red-600' : 'bg-[#448c6c] hover:bg-[#366d54]'
-                }`}
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Notification Modal (Success/Error) */}
-      {notification.show && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={closeNotification}></div>
-          <div className="relative bg-white rounded-xl shadow-2xl p-8 max-w-sm w-full text-center transform transition-all scale-100">
-            <div className={`mx-auto w-16 h-16 flex items-center justify-center rounded-full mb-4 ${notification.type === 'success' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-              {notification.type === 'success' ? <Check size={32} /> : <X size={32} />}
-            </div>
-            <h3 className="text-2xl font-bold text-gray-800 mb-2">
-              {notification.type === 'success' ? 'Success!' : 'Error'}
-            </h3>
-            <p className="text-gray-600 mb-6">{notification.message}</p>
-            <div className="flex flex-col gap-3">
-              {notification.type === 'success' && (
-                <button 
-                  onClick={() => {
-                    closeNotification();
-                    navigate('/blog');
-                  }}
-                  className="px-8 py-3 rounded-full font-bold text-[#448c6c] border-2 border-[#448c6c] hover:bg-[#e6f0eb] transition-colors"
-                >
-                  Check Blog Page
-                </button>
-              )}
-              <button 
-                onClick={closeNotification}
-                className={`px-8 py-3 rounded-full font-bold text-white transition-colors ${notification.type === 'success' ? 'bg-[#448c6c] hover:bg-[#366d54]' : 'bg-red-500 hover:bg-red-600'}`}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmationModal 
+        confirmation={confirmation} 
+        onClose={closeConfirmation} 
+        onConfirm={handleConfirmAction} 
+        onInputChange={(val) => setConfirmation(prev => ({ ...prev, inputValue: val }))}
+      />
+      <NotificationModal
+        notification={notification}
+        onClose={() => {
+          closeNotification();
+        }}
+      />
+      <AddAdminModal
+        adminStatus={adminStatus}
+        currentUserCanCreateSuperAdmin={currentUserCanCreateSuperAdmin}
+        isOpen={adminModalOpen}
+        newAdminEmail={newAdminEmail}
+        newAdminPassword={newAdminPassword}
+        newAdminRole={newAdminRole}
+        onClose={closeAdminModal}
+        onEmailChange={setNewAdminEmail}
+        onPasswordChange={setNewAdminPassword}
+        onRoleChange={setNewAdminRole}
+        onSubmit={handleCreateAdmin}
+      />
+      <RemoveAdminInstructionsModal
+        email={removeAdminModal.email}
+        isOpen={removeAdminModal.show}
+        onClose={() => setRemoveAdminModal({ show: false, email: '' })}
+      />
+      <ChangePasswordModal
+        isOpen={passwordModalOpen}
+        onClose={() => {
+          setPasswordModalOpen(false);
+          setPasswordStatus({ type: '', message: '' });
+          setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        }}
+        passwordForm={passwordForm}
+        passwordStatus={passwordStatus}
+        onFormChange={(field, value) => setPasswordForm(prev => ({ ...prev, [field]: value }))}
+        onSubmit={handlePasswordSubmit}
+      />
     </div>
   );
 };

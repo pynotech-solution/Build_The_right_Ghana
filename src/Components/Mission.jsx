@@ -1,16 +1,34 @@
-import React, { useState } from 'react';
-import { X, CreditCard, Smartphone, Copy } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, CreditCard, Smartphone, Copy, Mail, MessageCircle, MessageSquare, Twitter, Instagram, Send, Music2 } from 'lucide-react';
 import Reveal from './Reveal';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const Mission = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const toggleModal = () => setIsModalOpen(!isModalOpen);
 
-  const momoNumber = import.meta.env.VITE_MOMO_NUMBER || "024 427 1160";
-  const momoName = import.meta.env.VITE_MOMO_NAME || "Build The Right Ghana";
-  const bankName = import.meta.env.VITE_BANK_NAME || "GCB Bank";
-  const bankAccount = import.meta.env.VITE_BANK_ACCOUNT_NUMBER || "1234567890123";
+
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+
+  useEffect(() => {
+    const fetchPayments = async () => {
+      setLoadingPayments(true);
+      try {
+        const snapshot = await getDocs(collection(db, "paymentMethods"));
+        setPaymentMethods(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (error) {
+        console.error("Error fetching payment methods:", error);
+      }
+      setLoadingPayments(false);
+    };
+
+    if (isModalOpen) {
+      fetchPayments();
+    }
+  }, [isModalOpen]);
 
   const copyToClipboard = async (text) => {
     try {
@@ -91,48 +109,60 @@ const Mission = () => {
                 Your contribution helps us build the right Ghana. Choose your preferred payment method below.
               </p>
 
-              {/* Mobile Money Section */}
-              <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-                <div className="flex items-center gap-3 mb-4 text-[#2d4e41]">
-                  <Smartphone className="w-6 h-6" />
-                  <h4 className="font-bold text-lg">Mobile Money</h4>
-                </div>
-                <div className="space-y-3 pl-2 border-l-2 border-[#2d4e41]/20 ml-2">
-                  <div className="pl-4">
-                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Momo Number</p>
-                    <div className="flex items-center gap-3">
-                      <p className="text-xl font-mono font-bold text-gray-800 tracking-wide">{momoNumber}</p>
-                      <button onClick={() => copyToClipboard(momoNumber.replace(/\s/g, ''))} className="text-gray-400 hover:text-[#2d4e41] transition-colors" title="Copy">
-                        <Copy size={16} />
-                      </button>
+              {loadingPayments ? (
+                <p className="text-center text-gray-500 py-8">Loading payment methods...</p>
+              ) : paymentMethods.length > 0 ? (
+                paymentMethods.map((method) => (
+                  <div key={method.id} className="bg-gray-50 p-5 rounded-xl border border-gray-200">
+                    <div className="flex items-center gap-3 mb-4 text-[#2d4e41]">
+                      {method.type === 'momo' ? <Smartphone className="w-6 h-6" /> : <CreditCard className="w-6 h-6" />}
+                      <h4 className="font-bold text-lg">{method.type === 'momo' ? 'Mobile Money' : 'Bank Transfer'}</h4>
                     </div>
-                    <p className="text-sm text-gray-600 font-medium mt-1">{momoName}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bank Details Section */}
-              <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-                <div className="flex items-center gap-3 mb-4 text-[#2d4e41]">
-                  <CreditCard className="w-6 h-6" />
-                  <h4 className="font-bold text-lg">Bank Transfer</h4>
-                </div>
-                <div className="space-y-3 pl-2 border-l-2 border-[#2d4e41]/20 ml-2">
-                  <div className="pl-4">
-                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Bank Name</p>
-                    <p className="text-gray-800 font-bold">{bankName}</p>
-                  </div>
-                  <div className="pl-4">
-                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Account Number</p>
-                    <div className="flex items-center gap-3">
-                      <p className="text-xl font-mono font-bold text-gray-800 tracking-wide">{bankAccount}</p>
-                      <button onClick={() => copyToClipboard(bankAccount)} className="text-gray-400 hover:text-[#2d4e41] transition-colors" title="Copy">
-                        <Copy size={16} />
-                      </button>
+                    <div className="space-y-3 pl-2 border-l-2 border-[#2d4e41]/20 ml-2">
+                      <div className="pl-4">
+                        <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">{method.provider}</p>
+                        <div className="flex items-center gap-3">
+                          <p className="text-xl font-mono font-bold text-gray-800 tracking-wide">{method.accountNumber}</p>
+                          <button onClick={() => copyToClipboard(method.accountNumber.replace(/\s/g, ''))} className="text-gray-400 hover:text-[#2d4e41] transition-colors" title="Copy">
+                            <Copy size={16} />
+                          </button>
+                        </div>
+                        <p className="text-sm text-gray-600 font-medium mt-1">{method.accountName}</p>
+                      </div>
                     </div>
                   </div>
+                ))
+              ) : (
+                <div className="bg-gray-50 p-8 rounded-xl border border-gray-200 text-center flex flex-col items-center">
+                  <div className="w-16 h-16 bg-[#e6f0eb] text-[#448c6c] rounded-full flex items-center justify-center mb-4">
+                    <MessageSquare size={32} />
+                  </div>
+                  <h4 className="text-xl font-bold text-[#2d4e41] mb-2">Contact Support to Donate</h4>
+                  <p className="text-gray-600 text-sm mb-6">
+                    We are currently updating our payment methods. Please reach out to us directly, and we will assist you securely!
+                  </p>
+                  <div className="flex flex-col w-full gap-4">
+                    <a 
+                      href="mailto:solutionspynotech@gmail.com" 
+                      className="flex items-center justify-center gap-2 w-full bg-[#ea4335] text-white font-bold py-3 rounded-lg hover:bg-[#d33426] transition-colors shadow-sm"
+                    >
+                      <Mail size={20} /> Email Admin
+                    </a>
+                    <div className="relative flex items-center py-2">
+                      <div className="flex-grow border-t border-gray-300"></div>
+                      <span className="flex-shrink-0 mx-4 text-gray-400 text-sm font-medium">or reach us on</span>
+                      <div className="flex-grow border-t border-gray-300"></div>
+                    </div>
+                    <div className="flex flex-wrap justify-center gap-3">
+                      <a href="https://wa.me/message/IDT5BMBG5QBGD1" target="_blank" rel="noopener noreferrer" className="p-3 bg-[#25D366] text-white rounded-full hover:bg-[#20bd5a] transition-transform hover:scale-110 shadow-sm" title="WhatsApp"><MessageCircle size={20} /></a>
+                      <a href="https://t.me/+233206787141" target="_blank" rel="noopener noreferrer" className="p-3 bg-[#0088cc] text-white rounded-full hover:bg-[#007ab8] transition-transform hover:scale-110 shadow-sm" title="Telegram"><Send size={20} /></a>
+                      <a href="https://x.com/btrghana" target="_blank" rel="noopener noreferrer" className="p-3 bg-black text-white rounded-full hover:bg-gray-800 transition-transform hover:scale-110 shadow-sm" title="X (Twitter)"><Twitter size={20} /></a>
+                      <a href="https://www.instagram.com/btr_ghana1?igsh=MXY2enI2OTcwcjgz" target="_blank" rel="noopener noreferrer" className="p-3 bg-[#E1306C] text-white rounded-full hover:bg-[#c92b60] transition-transform hover:scale-110 shadow-sm" title="Instagram"><Instagram size={20} /></a>
+                      <a href="https://www.tiktok.com/@btr.ghana?_r=1&_t=ZS-95JO0j7DV0n" target="_blank" rel="noopener noreferrer" className="p-3 bg-[#000000] text-white rounded-full hover:bg-gray-800 transition-transform hover:scale-110 shadow-sm" title="TikTok"><Music2 size={20} /></a>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

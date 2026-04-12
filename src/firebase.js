@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, setPersistence, inMemoryPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getAnalytics, isSupported } from "firebase/analytics";
@@ -19,6 +19,11 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 export let analytics = null;
+
+// Secondary app for creating new admins without logging out the current admin
+const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp");
+export const secondaryAuth = getAuth(secondaryApp);
+setPersistence(secondaryAuth, inMemoryPersistence);
 
 if (typeof window !== "undefined") {
   isSupported()

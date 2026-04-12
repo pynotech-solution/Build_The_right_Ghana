@@ -1,5 +1,5 @@
 import React from 'react';
-import { Twitter, Instagram, Youtube, Send, MessageCircle, Music2 } from 'lucide-react';
+import { Twitter, Instagram, Send, MessageCircle, Music2 } from 'lucide-react';
 import Reveal from './Reveal';
 
 const Socials = () => {
@@ -7,7 +7,6 @@ const Socials = () => {
     { name: 'X', icon: <Twitter />, color: 'hover:bg-black', url: 'https://x.com/btrghana' },
     { name: 'TikTok', icon: <Music2 />, color: 'hover:bg-neutral-900', url: 'https://www.tiktok.com/@btr.ghana?_r=1&_t=ZS-95JO0j7DV0n' },
     { name: 'Instagram', icon: <Instagram />, color: 'hover:bg-pink-600', url: 'https://www.instagram.com/btr_ghana1?igsh=MXY2enI2OTcwcjgz' },
-    { name: 'YouTube', icon: <Youtube />, color: 'hover:bg-red-600', url: 'https://youtube.com/@buildtherightghana6812?si=F4fFIfeWqIYEwvXh' },
     { name: 'Telegram', icon: <Send />, color: 'hover:bg-blue-500', url: 'https://t.me/+233206787141' },
     { name: 'WhatsApp', icon: <MessageCircle />, color: 'hover:bg-green-600', url: 'https://wa.me/message/IDT5BMBG5QBGD1' },
   ];
