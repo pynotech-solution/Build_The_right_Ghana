@@ -9,6 +9,7 @@ import Login from './Login';
 import Dashboard from './Dashboard';
 import ProtectedRoute from './ProtectedRoute';
 import { Home as HomeIcon } from 'lucide-react';
+import NotFound from './Pages/NotFound';
 
 function App() {
   const location = useLocation();
@@ -45,6 +46,7 @@ function App() {
             </ProtectedRoute>
           } 
         />
+        <Route path="*" element={<NotFound />} />
       </Routes>
       <Footer />
     </>
